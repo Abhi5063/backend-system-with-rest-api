@@ -45,25 +45,35 @@ exports.signup = async (req, res) => {
 
 exports.signin = async (req, res) => {
   const { email, password } = req.body;
+
   try {
-    const { error, value } = signupSchema.validate({ email, password });
+    const { error } = signupSchema.validate({ email, password });
     if (error) {
-      return res
-        .status(401)
-        .json({ success: false, message: error.details[0].message });
+      return res.status(401).json({
+        success: false,
+        message: error.details[0].message,
+      });
     }
+
+    // Find user
     const existingUser = await User.findOne({ email }).select("+password");
     if (!existingUser) {
-      return res
-        .status(401)
-        .json({ success: false, message: "User Does not exists!" });
+      return res.status(401).json({
+        success: false,
+        message: "User does not exist!",
+      });
     }
-    const result = await doHashValidation(password, existingUser.password);
-    if (!result) {
-      return res
-        .status(401)
-        .json({ success: false, message: "User Does not exists!" });
+
+    // Validate password
+    const valid = await doHashValidation(password, existingUser.password);
+    if (!valid) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid credentials!",
+      });
     }
+
+    // Create JWT
     const token = jwt.sign(
       {
         userId: existingUser._id,
@@ -71,24 +81,25 @@ exports.signin = async (req, res) => {
         verified: existingUser.verified,
       },
       process.env.TOKEN_SECRET,
-      {
-        expiresIn: "1d",
-      }
+      { expiresIn: "1d" }
     );
 
-    res
-      .cookie("Authorization", "Bearer" + token, {
-        expires: new Date(Date.now() + 8 * 3600000),
-        httpOnly: process.env.NODE_ENV === "production",
-        secure: process.env.NODE_ENV === "production",
-      })
-      .json({
-        success: true,
-        token,
-        message: "logged in Successfully",
-      });
+    // SET COOKIE HERE
+    res.cookie("Authorization", "Bearer " + token, {
+      expires: new Date(Date.now() + 8 * 3600000), // 8 hours
+      httpOnly: process.env.NODE_ENV === "production",
+      secure: process.env.NODE_ENV === "production",
+    });
+
+    // Success response
+    return res.json({
+      success: true,
+      token,
+      message: "Logged in successfully",
+    });
   } catch (error) {
     console.log(error);
+    return res.status(500).json({ success: false, message: "Server error" });
   }
 };
 

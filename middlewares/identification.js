@@ -1,16 +1,21 @@
 const jwt = require("jsonwebtoken");
 
 exports.identifier = (req, res, next) => {
-  let token;
+  let token = null;
 
-  // Handle different clients
-  if (req.headers.client === "not-browser") {
-    token = req.headers.authorization;
-  } else {
-    token = req.cookies["Authorization"];
+  // Try token from Authorization header
+  if (req.headers.authorization) {
+    const parts = req.headers.authorization.split(" ");
+    token = parts.length === 2 ? parts[1] : parts[0];
   }
 
-  // No token found
+  // Try token from cookies
+  if (!token && req.cookies.Authorization) {
+    const parts = req.cookies.Authorization.split(" ");
+    token = parts.length === 2 ? parts[1] : parts[0];
+  }
+
+  // Still no token → Unauthorized
   if (!token) {
     return res.status(403).json({
       success: false,
@@ -19,18 +24,14 @@ exports.identifier = (req, res, next) => {
   }
 
   try {
-    // Support both "Bearer <token>" and "<token>"
-    const userToken = token.startsWith("Bearer ") ? token.split(" ")[1] : token;
-
     // Verify JWT
-    const jwtVerified = jwt.verify(userToken, process.env.TOKEN_SECRET);
+    const decoded = jwt.verify(token, process.env.TOKEN_SECRET);
 
-    req.user = jwtVerified;
+    req.user = decoded; // add user info to request
     next();
   } catch (error) {
     console.log(error);
 
-    // Expired token
     if (error.name === "TokenExpiredError") {
       return res.status(401).json({
         success: false,
@@ -38,7 +39,6 @@ exports.identifier = (req, res, next) => {
       });
     }
 
-    // Invalid token
     return res.status(401).json({
       success: false,
       message: "Invalid token. Access denied.",
